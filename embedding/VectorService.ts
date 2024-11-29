@@ -78,6 +78,7 @@ export class VectorService {
     limit: number = 5
   ) {
     const queryEmbedding = await this.openAIService.createEmbedding(query);
+    console.info(queryEmbedding);
     return this.client.search(collectionName, {
       vector: queryEmbedding,
       limit,
