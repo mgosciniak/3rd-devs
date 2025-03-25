@@ -2,6 +2,8 @@ import OpenAI, { toFile } from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import fs from 'fs/promises';
 import { TextService, type IDoc } from "./TextService";
+import type { CreateEmbeddingResponse } from 'openai/resources/embeddings';
+import path from "path";
 
 export interface ImageProcessingResult {
   description: string;
@@ -24,7 +26,7 @@ export class OpenAIService {
     jsonMode?: boolean,
     maxTokens?: number
   }): Promise<OpenAI.Chat.Completions.ChatCompletion | AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
-    const { messages, model = "gpt-4o", stream = false, jsonMode = false, maxTokens = 4096 } = config;
+    const { messages, model = "gpt-4o", stream = false, jsonMode = false, maxTokens = 8096 } = config;
     try {
       const chatCompletion = await this.openai.chat.completions.create({
         messages,
@@ -47,7 +49,7 @@ export class OpenAIService {
 
   async processImage(imagePath: string): Promise<ImageProcessingResult> {
     try {
-      const image = await fs.readFile(imagePath);
+      const image = await fs.readFile(path.join(__dirname, 'storage/', imagePath));
       const base64Image = image.toString('base64');
 
       const response = await this.openai.chat.completions.create({
@@ -106,5 +108,48 @@ export class OpenAIService {
     }));
 
     return results;
+  }
+
+  async createEmbedding(text: string): Promise<number[]> {
+    try {
+      const response: CreateEmbeddingResponse = await this.openai.embeddings.create({
+        model: "text-embedding-3-large",
+        input: text,
+      });
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error("Error creating embedding:", error);
+      throw error;
+    }
+  }
+
+  async createJinaEmbedding(text: string): Promise<number[]> {
+    try {
+      const response = await fetch('https://api.jina.ai/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.JINA_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'jina-embeddings-v3',
+          task: 'text-matching',
+          dimensions: 1024,
+          late_chunking: false,
+          embedding_type: 'float',
+          input: [text]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.data[0].embedding;
+    } catch (error) {
+      console.error("Error creating Jina embedding:", error);
+      throw error;
+    }
   }
 }
